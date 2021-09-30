@@ -1,5 +1,7 @@
 # Xception Mask R-CNN
 
+*In progress*
+
 This is a Mask R-CNN implementation with Xception CNN.
 
 Code based on the following projects: 
