@@ -2428,8 +2428,8 @@ class MaskRCNN():
             _, C2, C3, C4, C5 = mobilenetv1_graph(input_image, config.BACKBONE, alpha=1.0, train_bn=config.TRAIN_BN)
         elif config.BACKBONE in ["mobilenetv2"]:
             _, C2, C3, C4, C5 = mobilenetv2_graph(input_image, config.BACKBONE, alpha=1.0, train_bn=config.TRAIN_BN)
-        elif config.BACKBONE in ["xception_graph"]:
-            _, C2, C3, C4, C5 = xception_graph(input_image, config.BACKBONE, alpha=1.0, train_bn=config.TRAIN_BN)
+        elif config.BACKBONE in ["xception"]:
+            _, C2, C3, C4, C5 = xception_graph(input_image, config.BACKBONE, alpha=1.0)
         
         # Top-down Layers
         # TODO: add assert to varify feature map sizes match what's in config
