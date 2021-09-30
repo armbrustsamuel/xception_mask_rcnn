@@ -503,6 +503,7 @@ def xception_graph(input_shape=(512, 512, 3), backbone='mobilenetv2', alpha=1., 
 #             backend that does not support separable convolutions.
 #         ValueError: in case of invalid argument for `weights` or `backbone`
 #     """
+    print("using " + backbone + "as backbone")
 
     assert backbone in ["xception"]
     
