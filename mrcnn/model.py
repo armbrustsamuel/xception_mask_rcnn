@@ -48,6 +48,11 @@ import keras.constraints as KC
 from keras.utils import conv_utils
 from keras.engine import InputSpec
 
+# Xception
+from keras.layers import Conv2D, DepthwiseConv2D, UpSampling2D, ZeroPadding2D, Lambda, AveragePooling2D, Input, Activation, Concatenate, Add, Reshape, BatchNormalization, Dropout
+from keras.engine import Layer
+from keras.activations import relu
+
 
 ############################################################
 #  Utility Functions
