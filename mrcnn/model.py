@@ -509,6 +509,27 @@ def xception_graph(input_shape=(512, 512, 3), backbone='mobilenetv2', alpha=1., 
 #     """
     print("using " + backbone + "as backbone")
 
+    if not (weights in {'pascal_voc', None}):
+        raise ValueError('The `weights` argument should be either '
+                         '`None` (random initialization) or `pascal_voc` '
+                         '(pre-trained on PASCAL VOC)')
+
+    if K.backend() != 'tensorflow':
+        raise RuntimeError('The Deeplabv3+ model is only available with '
+                           'the TensorFlow backend.')
+
+    if not (backbone in {'xception', 'mobilenetv2'}):
+        raise ValueError('The `backbone` argument should be either '
+                         '`xception`  or `mobilenetv2` ')
+
+    if input_tensor is None:
+        img_input = Input(shape=input_shape)
+    else:
+        if not K.is_keras_tensor(input_tensor):
+            img_input = Input(tensor=input_tensor, shape=input_shape)
+        else:
+            img_input = input_tensor
+
     assert backbone in ["xception"]
     
     batches_input = Lambda(lambda x: x/127.5 - 1)(img_input)
