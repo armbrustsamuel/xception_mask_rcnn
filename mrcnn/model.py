@@ -467,8 +467,8 @@ def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activa
 
 
 # def mobilenetv1_graph(inputs, architecture, alpha=1.0, depth_multiplier=1, train_bn = False):
-def xception_graph(input_shape=(512, 512, 3),  backbone='mobilenetv2', alpha=1., weights='pascal_voc', input_tensor=None, infer = False,
-              , classes=21, OS=16):
+def xception_graph(input_shape=(512, 512, 3), backbone='mobilenetv2', alpha=1., weights='pascal_voc', input_tensor=None, infer = False,
+              , classes=1, OS=16):
     
 #     """ Instantiates the Deeplabv3+ architecture
 #     Optionally loads weights pre-trained
@@ -536,14 +536,15 @@ def xception_graph(input_shape=(512, 512, 3),  backbone='mobilenetv2', alpha=1.,
                         depth_activation=False)
     
     # Stage 3
-    C3 = x, skip1 = _xception_block(x, [256, 256, 256], 'entry_flow_block2',
+    x, skip1 = _xception_block(x, [256, 256, 256], 'entry_flow_block2',
                                 skip_connection_type='conv', stride=2,
                                 depth_activation=False, return_skip=True)
-
-    # Stage 4
-    x = _xception_block(x, [728, 728, 728], 'entry_flow_block3',
+    
+    C3 = x = _xception_block(x, [728, 728, 728], 'entry_flow_block3',
                         skip_connection_type='conv', stride=entry_block3_stride,
                         depth_activation=False)
+
+    # Stage 4
     for i in range(16):
         x = _xception_block(x, [728, 728, 728], 'middle_flow_unit_{}'.format(i + 1),
                             skip_connection_type='sum', stride=1, rate=middle_block_rate,
@@ -557,6 +558,8 @@ def xception_graph(input_shape=(512, 512, 3),  backbone='mobilenetv2', alpha=1.,
     C5 = x = _xception_block(x, [1536, 1536, 2048], 'exit_flow_block2',
                         skip_connection_type='none', stride=1, rate=exit_block_rates[1],
                         depth_activation=True)
+
+    x.summary()
 
     return [C1,C2,C3,C4,C5]
 
