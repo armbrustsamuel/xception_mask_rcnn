@@ -356,6 +356,212 @@ def _depthwise_conv_block(inputs, pointwise_conv_filters, alpha,
     return KL.Activation(relu6, name='conv_pw_{}_relu'.format(block_id))(x)
 
 
+def _xception_block(inputs, depth_list, prefix, skip_connection_type, stride,
+                    rate=1, depth_activation=False, return_skip=False):
+    """ Basic building block of modified Xception network
+        Args:
+            inputs: input tensor
+            depth_list: number of filters in each SepConv layer. len(depth_list) == 3
+            prefix: prefix before name
+            skip_connection_type: one of {'conv','sum','none'}
+            stride: stride at last depthwise conv
+            rate: atrous rate for depthwise convolution
+            depth_activation: flag to use activation between depthwise & pointwise convs
+            return_skip: flag to return additional tensor after 2 SepConvs for decoder
+            """
+    residual = inputs
+    for i in range(3):
+        residual = SepConv_BN(residual,
+                              depth_list[i],
+                              prefix + '_separable_conv{}'.format(i + 1),
+                              stride=stride if i == 2 else 1,
+                              rate=rate,
+                              depth_activation=depth_activation)
+        if i == 1:
+            skip = residual
+    if skip_connection_type == 'conv':
+        shortcut = _conv2d_same(inputs, depth_list[-1], prefix + '_shortcut',
+                                kernel_size=1,
+                                stride=stride)
+        shortcut = BatchNormalization(name=prefix + '_shortcut_BN')(shortcut)
+        outputs = layers.add([residual, shortcut])
+    elif skip_connection_type == 'sum':
+        outputs = layers.add([residual, inputs])
+    elif skip_connection_type == 'none':
+        outputs = residual
+    if return_skip:
+        return outputs, skip
+    else:
+        return outputs
+
+def _conv2d_same(x, filters, prefix, stride=1, kernel_size=3, rate=1):
+    """Implements right 'same' padding for even kernel sizes
+        Without this there is a 1 pixel drift when stride = 2
+        Args:
+            x: input tensor
+            filters: num of filters in pointwise convolution
+            prefix: prefix before name
+            stride: stride at depthwise conv
+            kernel_size: kernel size for depthwise convolution
+            rate: atrous rate for depthwise convolution
+    """
+    if stride == 1:
+        return Conv2D(filters,
+                      (kernel_size, kernel_size),
+                      strides=(stride, stride),
+                      padding='same', use_bias=False,
+                      dilation_rate=(rate, rate),
+                      name=prefix)(x)
+    else:
+        kernel_size_effective = kernel_size + (kernel_size - 1) * (rate - 1)
+        pad_total = kernel_size_effective - 1
+        pad_beg = pad_total // 2
+        pad_end = pad_total - pad_beg
+        x = ZeroPadding2D((pad_beg, pad_end))(x)
+        return Conv2D(filters,
+                      (kernel_size, kernel_size),
+                      strides=(stride, stride),
+                      padding='valid', use_bias=False,
+                      dilation_rate=(rate, rate),
+                      name=prefix)(x)
+                      
+
+def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activation=False, epsilon=1e-3):
+    """ SepConv with BN between depthwise & pointwise. Optionally add activation after BN
+        Implements right "same" padding for even kernel sizes
+        Args:
+            x: input tensor
+            filters: num of filters in pointwise convolution
+            prefix: prefix before name
+            stride: stride at depthwise conv
+            kernel_size: kernel size for depthwise convolution
+            rate: atrous rate for depthwise convolution
+            depth_activation: flag to use activation between depthwise & pointwise convs
+            epsilon: epsilon to use in BN layer
+    """
+
+    if stride == 1:
+        depth_padding = 'same'
+    else:
+        kernel_size_effective = kernel_size + (kernel_size - 1) * (rate - 1)
+        pad_total = kernel_size_effective - 1
+        pad_beg = pad_total // 2
+        pad_end = pad_total - pad_beg
+        x = ZeroPadding2D((pad_beg, pad_end))(x)
+        depth_padding = 'valid'
+
+    if not depth_activation:
+        x = Activation('relu')(x)
+    x = DepthwiseConv2D((kernel_size, kernel_size), strides=(stride, stride), dilation_rate=(rate, rate),
+                        padding=depth_padding, use_bias=False, name=prefix + '_depthwise')(x)
+    x = BatchNormalization(name=prefix + '_depthwise_BN', epsilon=epsilon)(x)
+    if depth_activation:
+        x = Activation('relu')(x)
+    x = Conv2D(filters, (1, 1), padding='same',
+               use_bias=False, name=prefix + '_pointwise')(x)
+    x = BatchNormalization(name=prefix + '_pointwise_BN', epsilon=epsilon)(x)
+    if depth_activation:
+        x = Activation('relu')(x)
+
+    return x
+
+
+# def mobilenetv1_graph(inputs, architecture, alpha=1.0, depth_multiplier=1, train_bn = False):
+def xception_graph(weights='pascal_voc', input_tensor=None, infer = False,
+              input_shape=(512, 512, 3), classes=21, backbone='mobilenetv2',
+              OS=16, alpha=1.):
+    
+#     """ Instantiates the Deeplabv3+ architecture
+#     Optionally loads weights pre-trained
+#     on PASCAL VOC. This model is available for TensorFlow only,
+#     and can only be used with inputs following the TensorFlow
+#     data format `(width, height, channels)`.
+#     # Arguments
+#         weights: one of 'pascal_voc' (pre-trained on pascal voc)
+#             or None (random initialization)
+#         input_tensor: optional Keras tensor (i.e. output of `layers.Input()`)
+#             to use as image input for the model.
+#         input_shape: shape of input image. format HxWxC
+#             PASCAL VOC model was trained on (512,512,3) images
+#         classes: number of desired classes. If classes != 21,
+#             last layer is initialized randomly
+#         backbone: backbone to use. one of {'xception','mobilenetv2'}
+#         OS: determines input_shape/feature_extractor_output ratio. One of {8,16}.
+#             Used only for xception backbone.
+#         alpha: controls the width of the MobileNetV2 network. This is known as the
+#             width multiplier in the MobileNetV2 paper.
+#                 - If `alpha` < 1.0, proportionally decreases the number
+#                     of filters in each layer.
+#                 - If `alpha` > 1.0, proportionally increases the number
+#                     of filters in each layer.
+#                 - If `alpha` = 1, default number of filters from the paper
+#                     are used at each layer.
+#             Used only for mobilenetv2 backbone
+#     # Returns
+#         A Keras model instance.
+#     # Raises
+#         RuntimeError: If attempting to run this model with a
+#             backend that does not support separable convolutions.
+#         ValueError: in case of invalid argument for `weights` or `backbone`
+#     """
+
+    assert architecture in ["xception"]
+    
+    batches_input = Lambda(lambda x: x/127.5 - 1)(img_input)
+
+    if OS == 8:
+        entry_block3_stride = 1
+        middle_block_rate = 2  # ! Not mentioned in paper, but required
+        exit_block_rates = (2, 4)
+        atrous_rates = (12, 24, 36)
+    else:
+        entry_block3_stride = 2
+        middle_block_rate = 1
+        exit_block_rates = (1, 2)
+        atrous_rates = (6, 12, 18)
+    
+    # Stage 1
+    x = Conv2D(32, (3, 3), strides=(2, 2),
+                name='entry_flow_conv1_1', use_bias=False, padding='same')(batches_input)
+        
+    x = BatchNormalization(name='entry_flow_conv1_1_BN')(x)
+    x = Activation('relu')(x)
+
+    x = _conv2d_same(x, 64, 'entry_flow_conv1_2', kernel_size=3, stride=1)
+    x = BatchNormalization(name='entry_flow_conv1_2_BN')(x)
+    C1 = x = Activation('relu')(x)
+
+    # Stage 2
+    C2 = x = _xception_block(x, [128, 128, 128], 'entry_flow_block1',
+                        skip_connection_type='conv', stride=2,
+                        depth_activation=False)
+    
+    # Stage 3
+    C3 = x, skip1 = _xception_block(x, [256, 256, 256], 'entry_flow_block2',
+                                skip_connection_type='conv', stride=2,
+                                depth_activation=False, return_skip=True)
+
+    # Stage 4
+    x = _xception_block(x, [728, 728, 728], 'entry_flow_block3',
+                        skip_connection_type='conv', stride=entry_block3_stride,
+                        depth_activation=False)
+    for i in range(16):
+        x = _xception_block(x, [728, 728, 728], 'middle_flow_unit_{}'.format(i + 1),
+                            skip_connection_type='sum', stride=1, rate=middle_block_rate,
+                            depth_activation=False)
+
+    C4 = x = _xception_block(x, [728, 1024, 1024], 'exit_flow_block1',
+                        skip_connection_type='conv', stride=1, rate=exit_block_rates[0],
+                        depth_activation=False)
+
+    # Stage 5
+    C5 = x = _xception_block(x, [1536, 1536, 2048], 'exit_flow_block2',
+                        skip_connection_type='none', stride=1, rate=exit_block_rates[1],
+                        depth_activation=True)
+
+    return [C1,C2,C3,C4,C5]
+
+
 def mobilenetv1_graph(inputs, architecture, alpha=1.0, depth_multiplier=1, train_bn = False):
     """MobileNetv1
     This function defines a MobileNetv1 architectures.
@@ -368,7 +574,7 @@ def mobilenetv1_graph(inputs, architecture, alpha=1.0, depth_multiplier=1, train
     # Returns
         five MobileNetv1 model stages.
     """
-    assert architecture in ["mobilenetv1"]
+    assert architecture in ["mobilenetv1"] 
     # Stage 1
     x      = _conv_block(inputs, 32, alpha, strides=(2, 2), block_id=0, train_bn=train_bn)              #Input Resolution: 224 x 224
     C1 = x = _depthwise_conv_block(x, 64, alpha, depth_multiplier, block_id=1, train_bn=train_bn)       #Input Resolution: 112 x 112
@@ -2222,6 +2428,9 @@ class MaskRCNN():
             _, C2, C3, C4, C5 = mobilenetv1_graph(input_image, config.BACKBONE, alpha=1.0, train_bn=config.TRAIN_BN)
         elif config.BACKBONE in ["mobilenetv2"]:
             _, C2, C3, C4, C5 = mobilenetv2_graph(input_image, config.BACKBONE, alpha=1.0, train_bn=config.TRAIN_BN)
+        elif config.BACKBONE in ["xception_graph"]:
+            _, C2, C3, C4, C5 = xception_graph(input_image, config.BACKBONE, alpha=1.0, train_bn=config.TRAIN_BN)
+        
         # Top-down Layers
         # TODO: add assert to varify feature map sizes match what's in config
         P5 = KL.Conv2D(256, (1, 1), name='fpn_c5p5')(C5)
