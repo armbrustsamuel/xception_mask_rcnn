@@ -467,9 +467,8 @@ def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activa
 
 
 # def mobilenetv1_graph(inputs, architecture, alpha=1.0, depth_multiplier=1, train_bn = False):
-def xception_graph(weights='pascal_voc', input_tensor=None, infer = False,
-              input_shape=(512, 512, 3), classes=21, backbone='mobilenetv2',
-              OS=16, alpha=1.):
+def xception_graph(input_shape=(512, 512, 3),  backbone='mobilenetv2', alpha=1., weights='pascal_voc', input_tensor=None, infer = False,
+              , classes=21, OS=16):
     
 #     """ Instantiates the Deeplabv3+ architecture
 #     Optionally loads weights pre-trained
@@ -505,7 +504,7 @@ def xception_graph(weights='pascal_voc', input_tensor=None, infer = False,
 #         ValueError: in case of invalid argument for `weights` or `backbone`
 #     """
 
-    assert architecture in ["xception"]
+    assert backbone in ["xception"]
     
     batches_input = Lambda(lambda x: x/127.5 - 1)(img_input)
 
