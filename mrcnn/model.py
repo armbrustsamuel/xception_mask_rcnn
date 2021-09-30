@@ -508,16 +508,18 @@ def xception_graph(input_shape=(512, 512, 3), backbone='mobilenetv2', alpha=1., 
     
     batches_input = Lambda(lambda x: x/127.5 - 1)(img_input)
 
-    if OS == 8:
-        entry_block3_stride = 1
-        middle_block_rate = 2  # ! Not mentioned in paper, but required
-        exit_block_rates = (2, 4)
-        atrous_rates = (12, 24, 36)
-    else:
-        entry_block3_stride = 2
-        middle_block_rate = 1
-        exit_block_rates = (1, 2)
-        atrous_rates = (6, 12, 18)
+    # if OS == 8:
+    #     entry_block3_stride = 1
+    #     middle_block_rate = 2  # ! Not mentioned in paper, but required
+    #     exit_block_rates = (2, 4)
+    #     atrous_rates = (12, 24, 36)
+    # else:
+    entry_block3_stride = 2
+    middle_block_rate = 1
+    exit_block_rates = (1, 2)
+    atrous_rates = (6, 12, 18)
+
+    print("done with params")
     
     # Stage 1
     x = Conv2D(32, (3, 3), strides=(2, 2),
@@ -530,10 +532,14 @@ def xception_graph(input_shape=(512, 512, 3), backbone='mobilenetv2', alpha=1., 
     x = BatchNormalization(name='entry_flow_conv1_2_BN')(x)
     C1 = x = Activation('relu')(x)
 
+    print("done with C1")
+
     # Stage 2
     C2 = x = _xception_block(x, [128, 128, 128], 'entry_flow_block1',
                         skip_connection_type='conv', stride=2,
                         depth_activation=False)
+
+    print("done with C2")
     
     # Stage 3
     x, skip1 = _xception_block(x, [256, 256, 256], 'entry_flow_block2',
@@ -544,6 +550,8 @@ def xception_graph(input_shape=(512, 512, 3), backbone='mobilenetv2', alpha=1., 
                         skip_connection_type='conv', stride=entry_block3_stride,
                         depth_activation=False)
 
+    print("done with C3")
+
     # Stage 4
     for i in range(16):
         x = _xception_block(x, [728, 728, 728], 'middle_flow_unit_{}'.format(i + 1),
@@ -553,11 +561,15 @@ def xception_graph(input_shape=(512, 512, 3), backbone='mobilenetv2', alpha=1., 
     C4 = x = _xception_block(x, [728, 1024, 1024], 'exit_flow_block1',
                         skip_connection_type='conv', stride=1, rate=exit_block_rates[0],
                         depth_activation=False)
+    
+    print("done with C4")
 
     # Stage 5
     C5 = x = _xception_block(x, [1536, 1536, 2048], 'exit_flow_block2',
                         skip_connection_type='none', stride=1, rate=exit_block_rates[1],
                         depth_activation=True)
+
+    print("done with C5")
 
     x.summary()
 
