@@ -29,7 +29,7 @@ ROOT_DIR = os.path.abspath("../")
 
 # Import Mask RCNN
 sys.path.append(ROOT_DIR)  # To find local version of the library
-from mmrcnn import utils
+from mrcnn import utils
 
 
 ############################################################
